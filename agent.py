@@ -1,20 +1,33 @@
 # The agent loop: chat with Claude in the terminal. Claude can ask for
-# get_recent_games, our Python runs it, and the result goes back to Claude.
+# one of our tools, our Python runs it, and the result goes back to Claude.
 
 import json
 from datetime import date
 
 import anthropic
+import requests
 from dotenv import load_dotenv
 
-from tools import get_head_to_head, get_home_away_record, get_recent_games
+from tools import get_head_to_head, get_home_away_record, get_odds, get_recent_games
 
 load_dotenv()
 client = anthropic.Anthropic()
 MODEL = "claude-haiku-5-5"  # cheapest model while testing
 
-SYSTEM_PROMPT = f"""You are an NBA research assistant. Today is {date.today().isoformat()}.
-Answer questions using the tools to fetch real data. Don't guess numbers."""
+HELP_LINE = "18+ only. Gambling Help Online: gamblinghelponline.org.au or 1800 858 858 (24/7, free)."
+
+SYSTEM_PROMPT = f"""You are an NBA research assistant for Australian users. Today is {date.today().isoformat()}. Times are Sydney time.
+
+Your job is research only: explain team form, stats, head-to-head history, and what bookmaker odds imply.
+
+Rules:
+- Never recommend a bet, a pick, a stake, or say a team is "value" or "the play". If asked who to bet on, say politely that you only do research, then offer the relevant facts instead.
+- Use the tools for every number. Never guess or use your own memory for scores, records or odds.
+- Say where each number came from: game results come from balldontlie; odds come from The Odds API, with the bookmaker name and the time the odds were fetched.
+- If data is missing or a tool returns an error, say so plainly. Don't fill the gap.
+- Point out when games are from last season or the playoffs, since they may not reflect current form.
+- Whenever you mention odds or betting, end with this line exactly: "{HELP_LINE}"
+"""
 
 # 1. Describe the tool to Claude. Claude only ever sees this description,
 #    never the Python code itself.
@@ -83,18 +96,49 @@ TOOLS = [
             "required": ["team_a", "team_b"],
         },
     },
+    {
+        "name": "get_odds",
+        "description": (
+            "Get head-to-head (who wins) decimal odds for upcoming NBA games from "
+            "Australian bookmakers. For each bookmaker: the odds, the implied chance "
+            "of each team winning (1 / odds), the bookmaker's margin (how far the two "
+            "implied chances add up past 100%), and the home team's fair chance with "
+            "the margin removed. Also gives the average fair chance across bookmakers. "
+            "Games that have already started are left out. Odds can be up to an hour old."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "team": {
+                    "type": "string",
+                    "description": "Optional. Only this team's next game. Leave out to get all upcoming games.",
+                },
+            },
+            "required": [],
+        },
+    },
 ]
 
 
 # 2. When Claude asks for a tool, this runs the matching Python function.
 def run_tool(name, tool_input):
-    if name == "get_recent_games":
-        return get_recent_games(tool_input["team"], tool_input.get("n", 5))
-    if name == "get_home_away_record":
-        return get_home_away_record(tool_input["team"], tool_input.get("season"))
-    if name == "get_head_to_head":
-        return get_head_to_head(tool_input["team_a"], tool_input["team_b"])
-    return {"error": f"Unknown tool: {name}"}
+    try:
+        if name == "get_recent_games":
+            return get_recent_games(tool_input["team"], tool_input.get("n", 5))
+        if name == "get_home_away_record":
+            return get_home_away_record(tool_input["team"], tool_input.get("season"))
+        if name == "get_head_to_head":
+            return get_head_to_head(tool_input["team_a"], tool_input["team_b"])
+        if name == "get_odds":
+            return get_odds(tool_input.get("team"))
+        return {"error": f"Unknown tool: {name}"}
+    # If a data API is down or slow, tell Claude instead of crashing the app.
+    except (requests.ConnectionError, requests.Timeout):
+        return {"error": "The data service couldn't be reached. It may be down; try again shortly."}
+    except requests.HTTPError as e:
+        return {"error": f"The data service returned an error ({e.response.status_code})."}
+    except RuntimeError as e:  # e.g. rate limit still hit after retries
+        return {"error": str(e)}
 
 
 # 3. The loop. `messages` is the whole conversation so far: Claude has no
@@ -133,7 +177,9 @@ def ask(messages):
 
 
 if __name__ == "__main__":
-    print("NBA research assistant. Type 'quit' to stop.\n")
+    print("NBA research assistant. Research only, no betting tips.")
+    print(HELP_LINE)
+    print("Type 'quit' to stop.\n")
     messages = []
     while True:
         question = input("You: ").strip()
@@ -141,5 +187,12 @@ if __name__ == "__main__":
             break
         if not question:
             continue
+        before = len(messages)
         messages.append({"role": "user", "content": question})
-        print(f"\nClaude: {ask(messages)}\n")
+        try:
+            print(f"\nClaude: {ask(messages)}\n")
+        except anthropic.APIError as e:
+            # Claude itself couldn't be reached (no credit, outage, etc.).
+            # Undo this half-finished turn so the conversation stays valid.
+            del messages[before:]
+            print(f"\n[error] Couldn't reach Claude: {e.__class__.__name__}. Try again.\n")

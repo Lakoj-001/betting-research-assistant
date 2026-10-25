@@ -4,7 +4,8 @@
 import json
 import os
 import time
-from datetime import date
+from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 
 import requests
 from dotenv import load_dotenv
@@ -13,6 +14,12 @@ load_dotenv()
 API_KEY = os.getenv("BALLDONTLIE_API_KEY")
 BASE_URL = "https://api.balldontlie.io/v1"
 TEAMS_FILE = "cache/teams.json"
+
+ODDS_API_KEY = os.getenv("ODDS_API_KEY")
+ODDS_URL = "https://api.the-odds-api.com/v4/sports/basketball_nba/odds"
+ODDS_FILE = "cache/odds.json"
+ODDS_MAX_AGE_MINUTES = 60  # reuse saved odds for an hour: each fetch costs 1 of 500 monthly credits
+LOCAL_TZ = ZoneInfo("Australia/Sydney")
 
 
 def api_get(path, params=None):
@@ -243,9 +250,110 @@ def get_head_to_head(team_a, team_b):
     }
 
 
+def fetch_odds():
+    """Return upcoming NBA head-to-head odds from Australian bookmakers.
+    Saved to a file and reused for an hour to save credits."""
+    if os.path.exists(ODDS_FILE):
+        with open(ODDS_FILE) as f:
+            saved = json.load(f)
+        age = time.time() - saved["fetched_at"]
+        if age < ODDS_MAX_AGE_MINUTES * 60:
+            return saved["data"], saved["fetched_at"]
+
+    # One market (h2h = who wins) in one region (au) costs 1 credit.
+    response = requests.get(
+        ODDS_URL,
+        params={"apiKey": ODDS_API_KEY, "regions": "au", "markets": "h2h", "oddsFormat": "decimal"},
+        timeout=15,
+    )
+    if response.status_code in (401, 429):
+        raise RuntimeError("The Odds API refused the request: the key is wrong or this month's credits are used up.")
+    response.raise_for_status()
+
+    saved = {"fetched_at": time.time(), "data": response.json()}
+    os.makedirs("cache", exist_ok=True)
+    with open(ODDS_FILE, "w") as f:
+        json.dump(saved, f)
+    return saved["data"], saved["fetched_at"]
+
+
+def get_odds(team=None):
+    """Upcoming NBA games with each bookmaker's decimal odds, turned into the
+    chance of winning the odds imply. Optionally only one team's next game."""
+    nickname = None
+    if team:
+        found = find_team(team)
+        if found is None:
+            return {"error": f"No NBA team found matching '{team}'."}
+        nickname = found["name"]  # e.g. "Celtics": The Odds API uses full names
+
+    events, fetched_at = fetch_odds()
+    now = datetime.now(timezone.utc)
+    games = []
+
+    # The API doesn't return games in date order, so sort by start time.
+    for event in sorted(events, key=lambda e: e["commence_time"]):
+        start = datetime.fromisoformat(event["commence_time"].replace("Z", "+00:00"))
+        if start <= now:
+            continue  # already started: live odds swing wildly, so skip them
+        home, away = event["home_team"], event["away_team"]
+        if nickname and nickname not in home and nickname not in away:
+            continue
+
+        bookmakers = []
+        for book in event["bookmakers"]:
+            prices = {o["name"]: o["price"] for o in book["markets"][0]["outcomes"]}
+            if home not in prices or away not in prices:
+                continue
+            # Decimal odds of 2.50 imply a 1 / 2.50 = 40% chance.
+            home_chance = 1 / prices[home]
+            away_chance = 1 / prices[away]
+            # The two chances add up to more than 100%. The extra is the bookmaker's margin.
+            margin = home_chance + away_chance - 1
+            # A margin far outside the normal 2-8% means placeholder prices
+            # (common on betting exchanges before anyone has bet), so skip them.
+            if margin > 0.15 or margin < -0.02:
+                continue
+            bookmakers.append({
+                "bookmaker": book["title"],
+                "home_odds": prices[home],
+                "away_odds": prices[away],
+                "home_implied_pct": round(home_chance * 100, 1),
+                "away_implied_pct": round(away_chance * 100, 1),
+                "margin_pct": round(margin * 100, 1),
+                # Scale both chances down so they add up to exactly 100%.
+                "home_fair_pct": round(home_chance / (1 + margin) * 100, 1),
+            })
+
+        if not bookmakers:
+            continue
+        avg_home_fair = sum(b["home_fair_pct"] for b in bookmakers) / len(bookmakers)
+        games.append({
+            "home_team": home,
+            "away_team": away,
+            "starts_sydney_time": start.astimezone(LOCAL_TZ).strftime("%a %d %b %I:%M %p"),
+            "bookmakers": bookmakers,
+            "average_fair_chance_pct": {
+                home: round(avg_home_fair, 1),
+                away: round(100 - avg_home_fair, 1),
+            },
+        })
+
+    if not games:
+        who = f" for the {nickname}" if nickname else ""
+        return {"error": f"No upcoming games with odds found{who}. They may not have a game in the next few days."}
+
+    return {
+        "odds_fetched_sydney_time": datetime.fromtimestamp(fetched_at, LOCAL_TZ).strftime("%a %d %b %I:%M %p"),
+        "region": "Australian bookmakers",
+        "games": games[:1] if nickname else games,  # just the team's next game
+    }
+
+
 if __name__ == "__main__":
     # Quick tests: run `python tools.py`
     for name in ["Celtics", "lakers", "DEN", "Celtcs"]:
         print(get_recent_games(name, 5))
     print(get_home_away_record("Celtics", 2025))
     print(get_head_to_head("Celtics", "76ers"))
+    print(json.dumps(get_odds("Celtics"), indent=2))
