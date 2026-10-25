@@ -168,6 +168,7 @@ def get_recent_games(team, n=5):
         results.append(describe(view))
 
     return {
+        "source": "balldontlie",
         "team": found["full_name"],
         "games_counted": len(games),
         "wins": wins,
@@ -208,6 +209,7 @@ def get_home_away_record(team, season=None):
         side["avg_allowed"] = round(side.pop("points_allowed") / played, 1) if played else None
 
     return {
+        "source": "balldontlie",
         "team": found["full_name"],
         "season": f"{season}-{str(season + 1)[2:]}",
         "home": totals["home"],
@@ -241,6 +243,7 @@ def get_head_to_head(team_a, team_b):
         results.append(describe(view))
 
     return {
+        "source": "balldontlie",
         "team_a": a["full_name"],
         "team_b": b["full_name"],
         "games_counted": len(results),
@@ -344,6 +347,7 @@ def get_odds(team=None):
         return {"error": f"No upcoming games with odds found{who}. They may not have a game in the next few days."}
 
     return {
+        "source": "The Odds API",
         "odds_fetched_sydney_time": datetime.fromtimestamp(fetched_at, LOCAL_TZ).strftime("%a %d %b %I:%M %p"),
         "region": "Australian bookmakers",
         "games": games[:1] if nickname else games,  # just the team's next game
