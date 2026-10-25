@@ -7,7 +7,7 @@ from datetime import date
 import anthropic
 from dotenv import load_dotenv
 
-from tools import get_recent_games
+from tools import get_head_to_head, get_home_away_record, get_recent_games
 
 load_dotenv()
 client = anthropic.Anthropic()
@@ -23,9 +23,9 @@ TOOLS = [
         "name": "get_recent_games",
         "description": (
             "Get an NBA team's last n finished games: wins, losses, points scored, "
-            "points allowed, and one line per game (date, W/L, score, home 'vs' or "
-            "away 'at', opponent). Can include last season's games if the new "
-            "season has only just started."
+            "points allowed, and one line per game (date, W/L, our score first, "
+            "'home vs' or 'away at', opponent). Can include last season's games if "
+            "the new season has only just started."
         ),
         "input_schema": {
             "type": "object",
@@ -41,7 +41,48 @@ TOOLS = [
             },
             "required": ["team"],
         },
-    }
+    },
+    {
+        "name": "get_home_away_record",
+        "description": (
+            "Get an NBA team's regular-season wins and losses at home and away for "
+            "one season, with average points scored and allowed in each."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "team": {
+                    "type": "string",
+                    "description": "Team name, city or abbreviation, e.g. 'Celtics'.",
+                },
+                "season": {
+                    "type": "integer",
+                    "description": (
+                        "Starting year of the season, e.g. 2025 for 2025-26. "
+                        "Defaults to the current season. Only this season and last "
+                        "season are available."
+                    ),
+                },
+            },
+            "required": ["team"],
+        },
+    },
+    {
+        "name": "get_head_to_head",
+        "description": (
+            "Get every game between two NBA teams this season and last season "
+            "(regular season and playoffs), with each team's win count. Game lines "
+            "are written from team_a's side."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "team_a": {"type": "string", "description": "First team, e.g. 'Celtics'."},
+                "team_b": {"type": "string", "description": "Second team, e.g. '76ers'."},
+            },
+            "required": ["team_a", "team_b"],
+        },
+    },
 ]
 
 
@@ -49,6 +90,10 @@ TOOLS = [
 def run_tool(name, tool_input):
     if name == "get_recent_games":
         return get_recent_games(tool_input["team"], tool_input.get("n", 5))
+    if name == "get_home_away_record":
+        return get_home_away_record(tool_input["team"], tool_input.get("season"))
+    if name == "get_head_to_head":
+        return get_head_to_head(tool_input["team_a"], tool_input["team_b"])
     return {"error": f"Unknown tool: {name}"}
 
 
