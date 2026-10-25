@@ -354,6 +354,101 @@ def get_odds(team=None):
     }
 
 
+BETFAIR_COMMISSION = 0.05  # Betfair takes ~5% of winnings, so its prices are worth a bit less
+
+
+def grade(edge_pct, books_compared, spread_pts, fair_chance):
+    """A-F grade for a price that beats the market. A bigger edge scores higher.
+    The grade drops one letter for each reason to trust the 'fair' price less:
+    few bookmakers, bookmakers that disagree, or a longshot (bookmakers load
+    extra margin onto underdogs, so their fair chance tends to be overstated)."""
+    letters = "ABCDF"
+    if edge_pct >= 4:
+        level = 0
+    elif edge_pct >= 2.5:
+        level = 1
+    elif edge_pct >= 1:
+        level = 2
+    else:
+        level = 3
+    if books_compared < 4 or spread_pts > 3:
+        level += 1
+    if fair_chance < 0.25:
+        level += 1
+    return letters[min(level, 4)]
+
+
+def find_value_bets(team=None):
+    """Find bookmaker prices that are better than the market's fair price.
+
+    For each bookmaker's price on each team:
+      1. Work out the fair chance from all the OTHER bookmakers (margin removed),
+         so a bookmaker's own price can't pull the benchmark towards itself.
+      2. Edge = fair chance x price - 1. Above 0 means the price pays more than
+         the market thinks the result is worth.
+    """
+    odds = get_odds(team)
+    if "error" in odds:
+        return odds
+
+    flagged = []
+    for game in odds["games"]:
+        books = game["bookmakers"]
+        for i, book in enumerate(books):
+            others = books[:i] + books[i + 1:]
+            if len(others) < 2:
+                continue  # can't form a fair price from fewer than 2 other bookmakers
+            others_home_fair = [b["home_fair_pct"] for b in others]
+            fair_home = sum(others_home_fair) / len(others_home_fair) / 100
+            spread = max(others_home_fair) - min(others_home_fair)
+
+            for side, price, fair in [
+                (game["home_team"], book["home_odds"], fair_home),
+                (game["away_team"], book["away_odds"], 1 - fair_home),
+            ]:
+                effective = price
+                if book["bookmaker"].startswith("Betfair"):
+                    effective = 1 + (price - 1) * (1 - BETFAIR_COMMISSION)
+                edge = fair * effective - 1
+                if edge <= 0:
+                    continue
+                edge_pct = round(edge * 100, 1)
+                flagged.append({
+                    "game": f"{game['away_team']} at {game['home_team']}",
+                    "starts_sydney_time": game["starts_sydney_time"],
+                    "team": side,
+                    "bookmaker": book["bookmaker"],
+                    "price": price,
+                    "fair_chance_pct": round(fair * 100, 1),
+                    "fair_odds": round(1 / fair, 2),
+                    "edge_pct": edge_pct,
+                    "grade": grade(edge_pct, len(others), spread, fair),
+                    "bookmakers_compared": len(others),
+                    "bookmaker_disagreement_pts": round(spread, 1),
+                })
+
+    flagged.sort(key=lambda f: f["edge_pct"], reverse=True)
+    return {
+        "source": "The Odds API",
+        "odds_fetched_sydney_time": odds["odds_fetched_sydney_time"],
+        "games_scanned": len(odds["games"]),
+        "prices_above_fair": flagged[:10],
+        "method": (
+            "Fair chance = average of the other bookmakers' chances with their margin removed. "
+            "Edge = fair chance x price - 1, after Betfair's ~5% commission. "
+            "Grades: A 4%+, B 2.5%+, C 1%+, D under 1%; one letter lower if fewer than 4 "
+            "bookmakers were compared or they disagree by more than 3 points, and one more "
+            "if the fair chance is under 25% (longshot)."
+        ),
+        "caveats": (
+            "Edge is a long-run average over many similar bets, not a prediction for this game. "
+            "Odds can be up to an hour old and may have moved. The 'fair' price is only the "
+            "market's view; it can be wrong, especially for longshots. Neds and Ladbrokes are "
+            "owned by the same company and usually share prices, so treat them as one source."
+        ),
+    }
+
+
 if __name__ == "__main__":
     # Quick tests: run `python tools.py`
     for name in ["Celtics", "lakers", "DEN", "Celtcs"]:

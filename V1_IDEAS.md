@@ -18,6 +18,18 @@ Things noticed while building v0, roughly in priority order.
 - **Try a stronger model** for the final answer and compare eval scores and cost per question.
 - **A shared cache** (e.g. a small database) so all visitors share one set of API calls instead of each server copy fetching its own.
 
+## Value finder next steps
+- **Track every graded price and its result.** This is the only honest way to find out whether A-grades actually beat the market, and the only evidence that could back any future performance claim.
+- **Better margin removal** (power or Shin method) to fix the longshot bias, instead of only downgrading longshots.
+- **Fresher odds:** the free tier forces a 1-hour cache. Real edges disappear in minutes, so a paid plan with frequent refreshes is needed for this to be useful live.
+- **More markets** (line/spread, totals, player props) and more bookmakers.
+- **Flag stale prices:** a bookmaker that hasn't updated recently often looks like "value" when it's just behind.
+
 ## Before charging money or taking investment
-- Check Australia's rules on gambling-related services and advertising with someone qualified.
+Get advice from an Australian lawyer who knows gambling law. Questions to bring:
+- Does showing graded "prices above fair" make this a gambling service or tipping service under the Interactive Gambling Act or state law?
+- If we earn affiliate commission from bookmakers, which advertising rules apply (inducements, mandatory messages, state differences such as NSW)?
+- What can we claim about grades and edge under Australian Consumer Law, and what evidence is needed?
+- App store requirements: 18+ rating, and any licensing needed for odds and value content.
+- Responsible gambling duties: BetStop, deposit-limit prompts, loss-chasing detection.
 - Proper usage limits and accounts instead of a per-session question cap.

@@ -8,25 +8,34 @@ import anthropic
 import requests
 from dotenv import load_dotenv
 
-from tools import get_head_to_head, get_home_away_record, get_odds, get_recent_games
+from tools import find_value_bets, get_head_to_head, get_home_away_record, get_odds, get_recent_games
 
 load_dotenv()
 client = anthropic.Anthropic()
 MODEL = "claude-haiku-5-5"  # cheapest model while testing
 
-HELP_LINE = "18+ only. Gambling Help Online: gamblinghelponline.org.au or 1800 858 858 (24/7, free)."
+HELP_LINE = (
+    "18+ only. Gambling Help Online: gamblinghelponline.org.au or 1800 858 858 (24/7, free). "
+    "Self-exclude from all Australian bookmakers: betstop.gov.au."
+)
 
-SYSTEM_PROMPT = f"""You are an NBA research assistant for Australian users. Today is {date.today().isoformat()}. Times are Sydney time.
+SYSTEM_PROMPT = f"""You are an NBA odds and stats research assistant for Australian users. Today is {date.today().isoformat()}. Times are Sydney time.
 
-Your job is research only: explain team form, stats, head-to-head history, and what bookmaker odds imply.
+You explain team form, head-to-head history, what bookmaker odds imply, and where a bookmaker's price is above the market's fair price (using the find_value_bets tool).
 
-Rules:
-- Never recommend a bet, a pick, a stake, or say a team is "value" or "the play". If asked who to bet on, say politely that you only do research, then offer the relevant facts instead.
+How to talk about prices:
+- Describe prices; never tell the user what to do. Say "Neds' 9.25 on the Clippers is above the market's fair odds of 8.01 (edge +15.5%, grade C)", never "bet the Clippers", "take this", "lock", or "you should".
+- Never suggest how much to stake, never build parlays or multis, and never promise or imply profit. Edge is a long-run average over many similar bets, not a prediction for one game.
+- When you show a price above fair, always say: the grade and what lowered it, that odds may have moved since they were fetched, and that the fair price is only the market's view and can be wrong (especially for longshots).
+- If asked "who should I bet on?" or "how much should I bet?", say plainly that you don't make picks or stake suggestions, then offer form, odds and any prices above fair as research.
+- If the user mentions chasing losses, betting more than they can afford, or feeling out of control, stop the analysis and point them to the support services below.
+
+Data rules:
 - Use the tools for every number. Never guess or use your own memory for scores, records or odds.
 - Say where each number came from: game results come from balldontlie; odds come from The Odds API, with the bookmaker name and the time the odds were fetched.
 - If data is missing or a tool returns an error, say so plainly. Don't fill the gap.
 - Point out when games are from last season or the playoffs, since they may not reflect current form.
-- Whenever you mention odds or betting, end with this line exactly: "{HELP_LINE}"
+- Whenever you mention odds, prices or betting, end with this line exactly: "{HELP_LINE}"
 """
 
 # 1. Describe the tool to Claude. Claude only ever sees this description,
@@ -117,6 +126,28 @@ TOOLS = [
             "required": [],
         },
     },
+    {
+        "name": "find_value_bets",
+        "description": (
+            "Scan upcoming NBA games for bookmaker prices that are better than the market's "
+            "fair price. For each bookmaker, the fair chance comes from all the OTHER "
+            "bookmakers with their margin removed; edge = fair chance x price - 1. Returns up "
+            "to 10 prices with a positive edge, best first, each with an A-F grade (A strongest), "
+            "the fair odds, how many bookmakers were compared, and how much they disagree. Also "
+            "returns the method and caveats, which you must pass on. An empty list means no "
+            "bookmaker currently beats the market, which is common."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "team": {
+                    "type": "string",
+                    "description": "Optional. Only check this team's next game. Leave out to scan all upcoming games.",
+                },
+            },
+            "required": [],
+        },
+    },
 ]
 
 
@@ -131,6 +162,8 @@ def run_tool(name, tool_input):
             return get_head_to_head(tool_input["team_a"], tool_input["team_b"])
         if name == "get_odds":
             return get_odds(tool_input.get("team"))
+        if name == "find_value_bets":
+            return find_value_bets(tool_input.get("team"))
         return {"error": f"Unknown tool: {name}"}
     # If a data API is down or slow, tell Claude instead of crashing the app.
     except (requests.ConnectionError, requests.Timeout):
@@ -177,7 +210,7 @@ def ask(messages):
 
 
 if __name__ == "__main__":
-    print("NBA research assistant. Research only, no betting tips.")
+    print("NBA odds and stats research. Prices and probabilities, never picks or stake advice.")
     print(HELP_LINE)
     print("Type 'quit' to stop.\n")
     messages = []

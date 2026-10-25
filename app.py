@@ -21,10 +21,16 @@ from agent import HELP_LINE, ask  # noqa: E402
 
 MAX_QUESTIONS = 20  # per visitor session, so a public link can't run up the API bill
 
-st.set_page_config(page_title="NBA Research Assistant", page_icon="🏀")
-st.title("🏀 NBA Research Assistant")
-st.caption("Ask about team form, head-to-head records, home/away splits and what tonight's odds imply.")
-st.info(f"Research only, no betting tips. {HELP_LINE}")
+st.set_page_config(page_title="NBA Odds Research", page_icon="🏀")
+st.title("🏀 NBA Odds Research")
+st.caption(
+    "Ask about team form, head-to-head records, what the odds imply, "
+    "and which bookmaker prices beat the market's fair price."
+)
+st.info(
+    "Prices and probabilities only: no picks, no stake advice, no guarantees. "
+    f"An edge is a long-run average, not a prediction. {HELP_LINE}"
+)
 
 # st.session_state survives between reruns of this script for one visitor.
 # `messages` is the full history Claude sees (including tool calls);
@@ -41,7 +47,7 @@ questions_asked = sum(1 for role, _ in st.session_state.chat if role == "user")
 
 if questions_asked >= MAX_QUESTIONS:
     st.warning(f"You've reached the limit of {MAX_QUESTIONS} questions for this session. Refresh the page to start again.")
-elif question := st.chat_input("e.g. How have the Celtics gone in their last 5 games?"):
+elif question := st.chat_input("e.g. Are any bookmakers pricing tonight's games above fair odds?"):
     st.session_state.chat.append(("user", question))
     with st.chat_message("user"):
         st.markdown(question)

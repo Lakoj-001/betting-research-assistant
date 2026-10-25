@@ -1,13 +1,13 @@
-# 🏀 NBA Research Assistant
+# 🏀 NBA Odds Research
 
-A chat app where you ask about NBA teams and Claude answers from real data it fetches itself: recent form, home and away records, head-to-head history, and what bookmaker odds imply.
+A chat app where you ask about NBA teams and Claude answers from real data it fetches itself: recent form, home and away records, head-to-head history, what bookmaker odds imply, and **which Australian bookmaker prices beat the market's fair price**, graded A–F.
 
 **Try it:** LINK_GOES_HERE
 
 ![Screenshot of the chat page](screenshot.png)
 
-> **Research only.** It explains form, stats and what the odds imply. It never tells you what to bet on.
-> 18+ only. Gambling Help Online: [gamblinghelponline.org.au](https://www.gamblinghelponline.org.au) or 1800 858 858 (24/7, free).
+> **Prices and probabilities only.** It shows where a price is above fair odds and explains why. It never makes picks, suggests stakes or promises profit. An edge is a long-run average, not a prediction.
+> 18+ only. Gambling Help Online: [gamblinghelponline.org.au](https://www.gamblinghelponline.org.au) or 1800 858 858 (24/7, free). Self-exclude: [betstop.gov.au](https://www.betstop.gov.au).
 
 ## Example questions
 
@@ -15,6 +15,7 @@ A chat app where you ask about NBA teams and Claude answers from real data it fe
 - "Were the Lakers better at home or away last season?"
 - "Who won the Celtics vs 76ers playoff series last season?"
 - "What are the odds for the Lakers' next game, and what chance do they give each team?"
+- "Are any bookmakers pricing the upcoming games above fair odds?"
 
 ## How the agent loop works
 
@@ -36,19 +37,32 @@ Claude has no memory between requests, so the whole conversation is sent every t
 | `get_home_away_record` | One season's record and average points at home vs away | balldontlie |
 | `get_head_to_head` | Every game between two teams, this season and last | balldontlie |
 | `get_odds` | Upcoming games' odds from Australian bookmakers, turned into implied chances, with the bookmaker's margin | [The Odds API](https://the-odds-api.com) |
+| `find_value_bets` | Bookmaker prices above the market's fair price, with edge % and an A–F grade | The Odds API |
 
 **Odds to chance:** decimal odds of 2.50 imply 1 ÷ 2.50 = 40%. The two teams' chances add up to a bit over 100%, and the extra is the bookmaker's margin. The app also shows each team's "fair" chance with the margin removed.
 
+## How the value finder works
+
+1. For each bookmaker's price, the **fair chance** comes from the *other* bookmakers, each with its margin removed, then averaged. A bookmaker's own price can't pull the benchmark towards itself.
+2. **Edge = fair chance × price − 1.** For example, a fair chance of 12.5% (fair odds 8.01) against a price of 9.25 gives 0.125 × 9.25 − 1 = **+15.5%**. Betfair prices are adjusted for its ~5% commission first.
+3. **Grade:** A at 4%+, B at 2.5%+, C at 1%+, D below that. The grade drops one letter for each reason to trust the fair price less:
+   - fewer than 4 bookmakers compared, or more than 3 points of disagreement between them
+   - a longshot (fair chance under 25%): bookmakers load extra margin onto underdogs, so their fair chance is usually overstated
+
+Most of the time few prices beat the market, which is expected: Australian bookmakers price NBA games closely.
+
 ## Guardrails
 
-- The system prompt allows research only, with no picks, stakes or "value" calls, and politely declines "who should I bet on?".
+- The system prompt describes prices and never says what to do: no picks, no stake sizes, no multis, no profit claims. "Who should I bet on?" and "how much should I bet?" get a clear no, followed by the research.
+- Any price above fair comes with its grade, why it was lowered, that odds may have moved, and that the fair price can be wrong.
+- If someone mentions chasing losses, the analysis stops and support services are shown instead (tested in the evals).
 - Every number comes from a tool and names its source. Claude says when data is missing instead of guessing.
 - Typos, unknown teams, an API being down and rate limits all return clear messages instead of crashing.
 - Each visitor gets 20 questions per session, which keeps API costs in check.
 
 ## Evals
 
-`evals.py` asks 10 questions with answers worked out from the data and checks every reply: the right numbers, the right tools called, no betting picks, and the help line shown where it should be. **Current result: 10/10.** Full answers are in [eval_results.md](eval_results.md).
+`evals.py` asks 13 questions with answers worked out from the data and checks every reply: the right numbers, the right tools called, no picks or stake advice, the caveats on value prices, support services for someone chasing losses, and the help line shown where it should be. **Current result: 13/13.** Full answers are in [eval_results.md](eval_results.md).
 
 ## Run it yourself
 
