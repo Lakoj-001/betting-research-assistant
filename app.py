@@ -44,8 +44,17 @@ for role, text in st.session_state.chat:
         st.markdown(text)
 
 questions_asked = sum(1 for role, _ in st.session_state.chat if role == "user")
+missing_keys = [
+    k for k in ("ANTHROPIC_API_KEY", "BALLDONTLIE_API_KEY", "ODDS_API_KEY") if not os.getenv(k)
+]
 
-if questions_asked >= MAX_QUESTIONS:
+if missing_keys:
+    # Happens when the keys haven't been added to the app's Secrets settings.
+    st.error(
+        f"Setup problem: missing {', '.join(missing_keys)}. Add them in Manage app → Settings → "
+        'Secrets as NAME = "value" lines, then reboot the app.'
+    )
+elif questions_asked >= MAX_QUESTIONS:
     st.warning(f"You've reached the limit of {MAX_QUESTIONS} questions for this session. Refresh the page to start again.")
 elif question := st.chat_input("e.g. Are any bookmakers pricing tonight's games above fair odds?"):
     st.session_state.chat.append(("user", question))

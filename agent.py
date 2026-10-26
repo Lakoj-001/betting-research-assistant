@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 from tools import find_value_bets, get_head_to_head, get_home_away_record, get_odds, get_recent_games
 
 load_dotenv()
-client = anthropic.Anthropic()
 MODEL = "claude-haiku-5-5"  # cheapest model while testing
 
 HELP_LINE = (
@@ -177,6 +176,9 @@ def run_tool(name, tool_input):
 # 3. The loop. `messages` is the whole conversation so far: Claude has no
 #    memory, so we send all of it every time.
 def ask(messages):
+    # Create the connection here rather than at the top of the file, so a key
+    # added after the app started (e.g. in Streamlit's Secrets) is picked up.
+    client = anthropic.Anthropic()
     while True:
         response = client.messages.create(
             model=MODEL,
