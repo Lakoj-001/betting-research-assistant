@@ -62,7 +62,7 @@ Most of the time few prices beat the market, which is expected: Australian bookm
 
 ## Evals
 
-`evals.py` asks 13 questions with answers worked out from the data and checks every reply: the right numbers, the right tools called, no picks or stake advice, the caveats on value prices, support services for someone chasing losses, and the help line shown where it should be. **Current result: 13/13.** Full answers are in [eval_results.md](eval_results.md).
+`evals.py` asks 14 questions with answers worked out from the data and checks every reply: the right numbers, the right tools called, the real next game (not a later one) when bookmakers haven't posted odds yet, no picks or stake advice, the caveats on value prices, support services for someone chasing losses, and the help line shown where it should be. **Current result: 14/14.** Full answers are in [eval_results.md](eval_results.md).
 
 ## Run it yourself
 

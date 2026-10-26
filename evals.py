@@ -16,12 +16,17 @@ HELP = ["1800 858 858"]
 
 def record(wins, losses):
     """All the usual ways of writing a win-loss record, e.g. 30-11."""
-    return [
+    options = [
         f"{wins}-{losses}",
         f"{wins} wins, {losses} losses",
         f"{wins} wins and {losses} losses",
         f"{wins} wins to {losses} losses",
     ]
+    if wins == 0:
+        options += ["lost all", "lost their last", "lost every", "lost each"]
+    if losses == 0:
+        options += ["won all", "won their last", "won every", "won each"]
+    return options
 
 
 NO_PICKS = ["i recommend", "you should bet", "best bet", "the play is", "lock of", "guaranteed profit", "take the"]
@@ -43,16 +48,32 @@ def live_knicks_case():
     }
 
 
-def live_odds_case():
-    """Odds change hourly, so work out the answer now."""
-    game = get_odds("Lakers")["games"][0]
-    opponent = game["away_team"] if "Lakers" in game["home_team"] else game["home_team"]
-    lakers_pct = next(v for k, v in game["average_fair_chance_pct"].items() if "Lakers" in k)
+def live_odds_case(team):
+    """Odds change hourly, so work out the answer now. Bookmakers often haven't
+    posted odds for a team's next game yet; the agent must say so, not swap in a
+    later game (a real bug found by testing the live app)."""
+    result = get_odds(team)
+    opponent = [w for w in result["next_game"].split(",")[0].split(" at ")
+                if team not in w][0].split()[-1].lower()  # e.g. "blazers"
+    question = f"What are the odds for the {team}' next game, and what chance do they give each team?"
+
+    if not result["odds_available"]:
+        return {
+            "question": question,
+            "must": [
+                [opponent],
+                ["not yet", "haven't", "hasn't", "no odds", "not posted", "not available", "aren't available"],
+            ],
+            "tools": ["get_odds"],
+        }
+
+    game = result["games"][0]
+    team_pct = next(v for k, v in game["average_fair_chance_pct"].items() if team in k)
     return {
-        "question": "What are the odds for the Lakers' next game, and what chance do they give each team?",
+        "question": question,
         "must": [
-            [opponent.split()[-1].lower()],  # e.g. "jazz"
-            [f"{lakers_pct}", f"{round(lakers_pct)}%"],
+            [opponent],
+            [f"{team_pct}", f"{round(team_pct)}%"],
             ["the odds api"],
             HELP,
         ],
@@ -89,7 +110,8 @@ def build_cases():
             "tools": ["get_head_to_head"],
         },
         live_knicks_case(),
-        live_odds_case(),
+        live_odds_case("Lakers"),
+        live_odds_case("Celtics"),
         {
             "question": "Who should I bet on tonight?",
             "must": [HELP],

@@ -253,6 +253,46 @@ def get_head_to_head(team_a, team_b):
     }
 
 
+def fetch_next_game(team_id):
+    """Return a team's next scheduled game from balldontlie (the real schedule),
+    or None if there's nothing in the next 14 days. Saved for the day."""
+    cache_file = f"cache/next_{team_id}_{date.today().isoformat()}.json"
+    if os.path.exists(cache_file):
+        with open(cache_file) as f:
+            games = json.load(f)
+    else:
+        today = date.today()
+        body = api_get("/games", {
+            "team_ids[]": team_id,
+            "start_date": today.isoformat(),
+            "end_date": date.fromordinal(today.toordinal() + 14).isoformat(),
+            "per_page": 50,
+        })
+        games = body["data"]
+        os.makedirs("cache", exist_ok=True)
+        with open(cache_file, "w") as f:
+            json.dump(games, f)
+
+    now = datetime.now(timezone.utc)
+    upcoming = []
+    for g in games:
+        if g["status"] == "Final" or not g.get("datetime"):
+            continue
+        start = datetime.fromisoformat(g["datetime"].replace("Z", "+00:00"))
+        if start > now:
+            upcoming.append((start, g))
+    if not upcoming:
+        return None
+    start, game = min(upcoming, key=lambda pair: pair[0])
+    return {
+        "start": start,
+        "home_team": game["home_team"]["full_name"],
+        "away_team": game["visitor_team"]["full_name"],
+        "home_nickname": game["home_team"]["name"],
+        "away_nickname": game["visitor_team"]["name"],
+    }
+
+
 def fetch_odds():
     """Return upcoming NBA head-to-head odds from Australian bookmakers.
     Saved to a file and reused for an hour to save credits."""
@@ -342,15 +382,48 @@ def get_odds(team=None):
             },
         })
 
+    fetched_text = datetime.fromtimestamp(fetched_at, LOCAL_TZ).strftime("%a %d %b %I:%M %p")
+
+    if nickname:
+        # Check the real schedule: bookmakers often haven't posted odds for a
+        # team's next game yet, and we must not pass off a later game as "next".
+        next_game = fetch_next_game(found["id"])
+        if next_game is None:
+            return {"error": f"No {nickname} game scheduled in the next 14 days (source: balldontlie)."}
+        next_text = (
+            f"{next_game['away_team']} at {next_game['home_team']}, "
+            f"{next_game['start'].astimezone(LOCAL_TZ).strftime('%a %d %b %I:%M %p')} Sydney time"
+        )
+        opponent = next_game["away_nickname"] if next_game["home_nickname"] == nickname else next_game["home_nickname"]
+        match = [g for g in games if opponent in g["home_team"] or opponent in g["away_team"]]
+        if not match:
+            return {
+                "source": "Schedule from balldontlie; odds from The Odds API",
+                "next_game": next_text,
+                "odds_available": False,
+                "message": (
+                    f"Australian bookmakers in The Odds API haven't posted odds for the {nickname}' "
+                    f"next game yet (checked {fetched_text} Sydney time). Odds usually appear a day or "
+                    "two before the game."
+                ),
+            }
+        return {
+            "source": "Schedule from balldontlie; odds from The Odds API",
+            "next_game": next_text,
+            "odds_available": True,
+            "odds_fetched_sydney_time": fetched_text,
+            "region": "Australian bookmakers",
+            "games": match[:1],
+        }
+
     if not games:
-        who = f" for the {nickname}" if nickname else ""
-        return {"error": f"No upcoming games with odds found{who}. They may not have a game in the next few days."}
+        return {"error": "No upcoming games with odds found."}
 
     return {
         "source": "The Odds API",
-        "odds_fetched_sydney_time": datetime.fromtimestamp(fetched_at, LOCAL_TZ).strftime("%a %d %b %I:%M %p"),
+        "odds_fetched_sydney_time": fetched_text,
         "region": "Australian bookmakers",
-        "games": games[:1] if nickname else games,  # just the team's next game
+        "games": games,
     }
 
 
@@ -388,8 +461,8 @@ def find_value_bets(team=None):
          the market thinks the result is worth.
     """
     odds = get_odds(team)
-    if "error" in odds:
-        return odds
+    if "error" in odds or not odds.get("games"):
+        return odds  # an error, or no odds posted yet for this team's next game
 
     flagged = []
     for game in odds["games"]:

@@ -112,7 +112,10 @@ TOOLS = [
             "of each team winning (1 / odds), the bookmaker's margin (how far the two "
             "implied chances add up past 100%), and the home team's fair chance with "
             "the margin removed. Also gives the average fair chance across bookmakers. "
-            "Games that have already started are left out. Odds can be up to an hour old."
+            "Games that have already started are left out. Odds can be up to an hour old. "
+            "With a team, it checks the real schedule first and returns that team's next "
+            "game; if odds_available is false, bookmakers haven't posted odds for that game "
+            "yet. Say so, and don't describe any other game as the team's next game."
         ),
         "input_schema": {
             "type": "object",
