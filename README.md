@@ -9,6 +9,8 @@ A chat app where you ask about NBA teams and Claude answers from real data it fe
 > **Prices and probabilities only.** It shows where a price is above fair odds and explains why. It never makes picks, suggests stakes or promises profit. An edge is a long-run average, not a prediction.
 > 18+ only. Gambling Help Online: [gamblinghelponline.org.au](https://www.gamblinghelponline.org.au) or 1800 858 858 (24/7, free). Self-exclude: [betstop.gov.au](https://www.betstop.gov.au).
 
+**New to odds?** [GLOSSARY.md](GLOSSARY.md) explains every term in plain English with worked examples. The same glossary is built into the app.
+
 ## Example questions
 
 - "How have the Celtics gone in their last 5 games?"

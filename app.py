@@ -32,6 +32,12 @@ st.info(
     f"An edge is a long-run average, not a prediction. {HELP_LINE}"
 )
 
+# Plain-English explanations for people new to odds, kept in GLOSSARY.md
+# so the same text can be read on GitHub too.
+with st.expander("📖 New to odds? What the terms mean"):
+    with open("GLOSSARY.md", encoding="utf-8") as f:
+        st.markdown(f.read())
+
 # st.session_state survives between reruns of this script for one visitor.
 # `messages` is the full history Claude sees (including tool calls);
 # `chat` is just the text bubbles we show on screen.
