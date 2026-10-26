@@ -2,7 +2,7 @@
 
 A chat app where you ask about NBA teams and Claude answers from real data it fetches itself: recent form, home and away records, head-to-head history, what bookmaker odds imply, and **which Australian bookmaker prices beat the market's fair price**, graded A–F.
 
-**Try it:** LINK_GOES_HERE
+**Try it:** [nba-odds-research.streamlit.app](https://nba-odds-research.streamlit.app)
 
 ![Screenshot of the chat page](screenshot.png)
 
