@@ -125,6 +125,46 @@ def settle():
     print(f"Settle: {len(games)} finished games to check, {settled} prices settled.")
 
 
+def report():
+    """How did each grade do? Pretends $1 was put on each opportunity, as a ruler."""
+    db = connect()
+    rows = db.execute(
+        "SELECT starts_utc, home_team, team, price, edge_pct, grade, result FROM prices"
+    ).fetchall()
+    db.close()
+
+    # One result per opportunity: for each game and team, keep only the best
+    # price across bookmakers, so a game seen at 5 bookmakers counts once.
+    best = {}
+    for starts, home, team, price, edge, grade, result in rows:
+        key = (starts, home, team)
+        if key not in best or price > best[key]["price"]:
+            best[key] = {"price": price, "edge": edge, "grade": grade, "result": result}
+
+    settled = [b for b in best.values() if b["result"] is not None]
+    waiting = len(best) - len(settled)
+    if not settled:
+        print(f"No settled results yet ({waiting} opportunities waiting for their games to finish).")
+        return
+
+    # Group by grade. Profit on $1: a win at price 9.75 is +8.75, a loss is -1.
+    print(f"{'Grade':<6} {'Settled':>7} {'Won':>5} {'Profit on $1 each':>18} {'Return':>8} {'Edge claimed':>13}")
+    for grade in ["A", "B", "C", "D", "F", "All"]:
+        group = settled if grade == "All" else [b for b in settled if b["grade"] == grade]
+        if not group:
+            continue
+        won = sum(1 for b in group if b["result"] == "won")
+        profit = sum(b["price"] - 1 if b["result"] == "won" else -1 for b in group)
+        avg_edge = sum(b["edge"] for b in group) / len(group)
+        money = f"{'+' if profit >= 0 else '-'}${abs(profit):.2f}"  # e.g. +$1.90 or -$1.00
+        print(f"{grade:<6} {len(group):>7} {won:>5} {money:>18} {profit / len(group):>+8.0%} {avg_edge:>+12.1f}%")
+
+    print(f"\n{len(settled)} settled opportunities, {waiting} still waiting.")
+    if len(settled) < 100:
+        print("Too few results to judge yet: with this many, the numbers are mostly luck. "
+              "Keep running track.py daily until there are a few hundred.")
+
+
 def show():
     """Print every saved price, so you can see what's in the database."""
     db = connect()
@@ -148,9 +188,12 @@ def show():
 
 if __name__ == "__main__":
     # `python track.py` settles finished games, then takes a snapshot.
-    # `python track.py show` lists what's saved.
-    if len(sys.argv) > 1 and sys.argv[1] == "show":
+    # `python track.py show` lists what's saved; `python track.py report` scores the grades.
+    command = sys.argv[1] if len(sys.argv) > 1 else ""
+    if command == "show":
         show()
+    elif command == "report":
+        report()
     else:
         settle()
         snapshot()
