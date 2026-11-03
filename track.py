@@ -1,11 +1,11 @@
 # Result tracking: keep score on the value finder.
-# Run `python track.py` once a day. For now it does step 1: snapshot.
+# Run `python track.py` once a day: it settles finished games, then saves new prices.
 
 import sqlite3
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
-from tools import find_value_bets
+from tools import api_get, find_value_bets, get_all_teams
 
 DB_FILE = "tracking.db"
 
@@ -60,6 +60,71 @@ def snapshot():
           f"({flagged - added} already saved earlier).")
 
 
+def team_from_odds_name(full_name):
+    """The Odds API and balldontlie name teams differently ("Los Angeles Clippers"
+    vs "LA Clippers"), so match on the short name they share ("Clippers")."""
+    for team in get_all_teams():
+        if team["name"] in full_name:
+            return team
+    return None
+
+
+def settle():
+    """Fill in 'won' or 'lost' for saved prices whose game has finished."""
+    db = connect()
+    # A game that started more than 4 hours ago should be over (they take ~2.5 hours).
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=4)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # DISTINCT = one row per game, however many bookmakers we saved for it.
+    games = db.execute(
+        "SELECT DISTINCT starts_utc, home_team, away_team FROM prices "
+        "WHERE result IS NULL AND starts_utc < ?",
+        (cutoff,),
+    ).fetchall()
+
+    settled = 0
+    for starts_utc, home_name, away_name in games:
+        home = team_from_odds_name(home_name)
+        if home is None:
+            print(f"  Couldn't match '{home_name}' to a balldontlie team, skipping.")
+            continue
+
+        # Ask balldontlie for the home team's games around that date. The US date can
+        # be a day behind the UTC date, so look at both days.
+        start = datetime.fromisoformat(starts_utc.replace("Z", "+00:00"))
+        found = api_get("/games", {
+            "team_ids[]": home["id"],
+            "start_date": (start - timedelta(days=1)).date().isoformat(),
+            "end_date": start.date().isoformat(),
+            "per_page": 10,
+        })["data"]
+
+        # Pick the home game that started within 6 hours of the time we saved.
+        match = None
+        for g in found:
+            if g["home_team"]["id"] != home["id"] or not g.get("datetime"):
+                continue
+            tip_off = datetime.fromisoformat(g["datetime"].replace("Z", "+00:00"))
+            if abs(tip_off - start) < timedelta(hours=6):
+                match = g
+        if match is None or match["status"] != "Final":
+            continue  # not found, not finished or postponed: try again next run
+
+        winner = home_name if match["home_team_score"] > match["visitor_team_score"] else away_name
+        # Update every saved price on this game at once: rows on the winner 'won', the rest 'lost'.
+        cursor = db.execute(
+            "UPDATE prices SET result = CASE WHEN team = ? THEN 'won' ELSE 'lost' END "
+            "WHERE starts_utc = ? AND home_team = ? AND result IS NULL",
+            (winner, starts_utc, home_name),
+        )
+        settled += cursor.rowcount
+        print(f"  {away_name} {match['visitor_team_score']} at {home_name} "
+              f"{match['home_team_score']}: {cursor.rowcount} prices settled")
+
+    db.commit()
+    db.close()
+    print(f"Settle: {len(games)} finished games to check, {settled} prices settled.")
+
+
 def show():
     """Print every saved price, so you can see what's in the database."""
     db = connect()
@@ -82,8 +147,10 @@ def show():
 
 
 if __name__ == "__main__":
-    # `python track.py` takes a snapshot; `python track.py show` lists what's saved.
+    # `python track.py` settles finished games, then takes a snapshot.
+    # `python track.py show` lists what's saved.
     if len(sys.argv) > 1 and sys.argv[1] == "show":
         show()
     else:
+        settle()
         snapshot()
