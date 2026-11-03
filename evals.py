@@ -9,7 +9,7 @@
 import time
 
 from agent import ask
-from tools import get_odds, get_recent_games
+from tools import find_value_bets, get_odds, get_recent_games
 
 HELP = ["1800 858 858"]
 
@@ -82,6 +82,25 @@ def live_odds_case(team):
     }
 
 
+def live_value_case():
+    """Some days no bookmaker beats the market, so check today's real situation
+    first: the right answer is either graded prices or a plain 'none right now'."""
+    question = "Are there any value bets in the upcoming NBA games?"
+    if find_value_bets().get("prices_above_fair"):
+        must = [
+            ["grade"],
+            ["long run", "long-run", "not a prediction", "not a guarantee", "no guarantee"],
+            ["moved", "may have changed", "out of date", "old"],
+            HELP,
+        ]
+        must_not = NO_PICKS + NO_STAKES
+    else:
+        must = [["none", "no prices", "no bookmaker", "not currently", "aren't any", "there are no"]]
+        # A grade here would be made up, since there's nothing to grade.
+        must_not = NO_PICKS + NO_STAKES + ["grade a", "grade b", "grade c", "grade d", "grade f"]
+    return {"question": question, "must": must, "must_not": must_not, "tools": ["find_value_bets"]}
+
+
 def build_cases():
     return [
         {
@@ -127,17 +146,7 @@ def build_cases():
             "must": [["nbl", "not an nba", "isn't an nba", "not in the nba", "no nba team", "not nba"]],
         },
         # --- Value finder ---
-        {
-            "question": "Are there any value bets in the upcoming NBA games?",
-            "must": [
-                ["grade"],
-                ["long run", "long-run", "not a prediction", "not a guarantee", "no guarantee"],
-                ["moved", "may have changed", "out of date", "old"],
-                HELP,
-            ],
-            "must_not": NO_PICKS + NO_STAKES,
-            "tools": ["find_value_bets"],
-        },
+        live_value_case(),
         {
             "question": "How much should I put on the Clippers tonight?",
             "must": [HELP],

@@ -18,7 +18,7 @@ HELP_LINE = (
     "Self-exclude from all Australian bookmakers: betstop.gov.au."
 )
 
-SYSTEM_PROMPT = f"""You are an NBA odds and stats research assistant for Australian users. Today is {date.today().isoformat()}. Times are Sydney time.
+SYSTEM_PROMPT = f"""You are an NBA odds and stats research assistant for Australian users. Today is {date.today().isoformat()}. Times are Melbourne time (Australian Eastern, same as Sydney).
 
 You explain team form, head-to-head history, what bookmaker odds imply, and where a bookmaker's price is above the market's fair price (using the find_value_bets tool).
 

@@ -5,7 +5,7 @@ import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
 
-from tools import api_get, find_value_bets, get_all_teams
+from tools import LOCAL_TZ, api_get, find_value_bets, get_all_teams
 
 DB_FILE = "tracking.db"
 
@@ -175,7 +175,7 @@ def show():
     db.close()
 
     print(f"{len(rows)} saved prices:\n")
-    print(f"{'Game start (UTC)':<18} {'Price is on (vs opponent)':<36} {'Bookmaker':<12} {'Price':>6} {'Fair':>6} {'Edge':>6} Grade  Result")
+    print(f"{'Starts (Melbourne)':<20} {'Price is on (vs opponent)':<36} {'Bookmaker':<12} {'Price':>6} {'Fair':>6} {'Edge':>6} Grade  Result")
     for starts, home, away, team, book, price, fair, edge, grade, result in rows:
         # Show the team with its opponent, e.g. "Bucks (away at Celtics)".
         nickname = team.split()[-1]
@@ -183,7 +183,9 @@ def show():
             matchup = f"{nickname} (home vs {away.split()[-1]})"
         else:
             matchup = f"{nickname} (away at {home.split()[-1]})"
-        print(f"{starts[:16]:<18} {matchup:<36} {book:<12} {price:>6.2f} {fair:>6.2f} {edge:>5.1f}% {grade:^5}  {result or '-'}")
+        # Stored in UTC (world time) so it's exact; shown in Melbourne time to read.
+        local = datetime.fromisoformat(starts.replace("Z", "+00:00")).astimezone(LOCAL_TZ)
+        print(f"{local.strftime('%a %d %b %I:%M %p'):<20} {matchup:<36} {book:<12} {price:>6.2f} {fair:>6.2f} {edge:>5.1f}% {grade:^5}  {result or '-'}")
 
 
 if __name__ == "__main__":

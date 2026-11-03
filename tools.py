@@ -19,7 +19,7 @@ ODDS_API_KEY = os.getenv("ODDS_API_KEY")
 ODDS_URL = "https://api.the-odds-api.com/v4/sports/basketball_nba/odds"
 ODDS_FILE = "cache/odds.json"
 ODDS_MAX_AGE_MINUTES = 60  # reuse saved odds for an hour: each fetch costs 1 of 500 monthly credits
-LOCAL_TZ = ZoneInfo("Australia/Sydney")
+LOCAL_TZ = ZoneInfo("Australia/Melbourne")  # same clock as Sydney (AEST/AEDT)
 
 
 def api_get(path, params=None):
@@ -374,7 +374,7 @@ def get_odds(team=None):
         games.append({
             "home_team": home,
             "away_team": away,
-            "starts_sydney_time": start.astimezone(LOCAL_TZ).strftime("%a %d %b %I:%M %p"),
+            "starts_melbourne_time": start.astimezone(LOCAL_TZ).strftime("%a %d %b %I:%M %p"),
             "starts_utc": event["commence_time"],  # exact start, for result tracking
             "bookmakers": bookmakers,
             "average_fair_chance_pct": {
@@ -393,7 +393,7 @@ def get_odds(team=None):
             return {"error": f"No {nickname} game scheduled in the next 14 days (source: balldontlie)."}
         next_text = (
             f"{next_game['away_team']} at {next_game['home_team']}, "
-            f"{next_game['start'].astimezone(LOCAL_TZ).strftime('%a %d %b %I:%M %p')} Sydney time"
+            f"{next_game['start'].astimezone(LOCAL_TZ).strftime('%a %d %b %I:%M %p')} Melbourne time"
         )
         opponent = next_game["away_nickname"] if next_game["home_nickname"] == nickname else next_game["home_nickname"]
         match = [g for g in games if opponent in g["home_team"] or opponent in g["away_team"]]
@@ -404,7 +404,7 @@ def get_odds(team=None):
                 "odds_available": False,
                 "message": (
                     f"Australian bookmakers in The Odds API haven't posted odds for the {nickname}' "
-                    f"next game yet (checked {fetched_text} Sydney time). Odds usually appear a day or "
+                    f"next game yet (checked {fetched_text} Melbourne time). Odds usually appear a day or "
                     "two before the game."
                 ),
             }
@@ -412,7 +412,7 @@ def get_odds(team=None):
             "source": "Schedule from balldontlie; odds from The Odds API",
             "next_game": next_text,
             "odds_available": True,
-            "odds_fetched_sydney_time": fetched_text,
+            "odds_fetched_melbourne_time": fetched_text,
             "region": "Australian bookmakers",
             "games": match[:1],
         }
@@ -422,7 +422,7 @@ def get_odds(team=None):
 
     return {
         "source": "The Odds API",
-        "odds_fetched_sydney_time": fetched_text,
+        "odds_fetched_melbourne_time": fetched_text,
         "region": "Australian bookmakers",
         "games": games,
     }
@@ -489,7 +489,7 @@ def find_value_bets(team=None, limit=10):
                 edge_pct = round(edge * 100, 1)
                 flagged.append({
                     "game": f"{game['away_team']} at {game['home_team']}",
-                    "starts_sydney_time": game["starts_sydney_time"],
+                    "starts_melbourne_time": game["starts_melbourne_time"],
                     "starts_utc": game["starts_utc"],
                     "home_team": game["home_team"],
                     "away_team": game["away_team"],
@@ -507,7 +507,7 @@ def find_value_bets(team=None, limit=10):
     flagged.sort(key=lambda f: f["edge_pct"], reverse=True)
     return {
         "source": "The Odds API",
-        "odds_fetched_sydney_time": odds["odds_fetched_sydney_time"],
+        "odds_fetched_melbourne_time": odds["odds_fetched_melbourne_time"],
         "games_scanned": len(odds["games"]),
         "prices_above_fair": flagged[:limit] if limit else flagged,  # limit=None keeps all
         "method": (
