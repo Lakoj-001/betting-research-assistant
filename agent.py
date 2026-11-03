@@ -180,32 +180,61 @@ def run_tool(name, tool_input):
         return {"error": str(e)}
 
 
+def describe_tool_call(name, tool_input):
+    """A short, readable label for a tool call, e.g. 'Recent games: Celtics'."""
+    team = tool_input.get("team")
+    if name == "get_recent_games":
+        return f"Recent games: {team}"
+    if name == "get_home_away_record":
+        return f"Home and away record: {team}"
+    if name == "get_head_to_head":
+        return f"Head-to-head: {tool_input.get('team_a')} vs {tool_input.get('team_b')}"
+    if name == "get_odds":
+        return f"Odds: {team}'s next game" if team else "Odds: all upcoming games"
+    if name == "find_value_bets":
+        return f"Prices above fair: {team}'s next game" if team else "Prices above fair: all upcoming games"
+    return name
+
+
 # 3. The loop. `messages` is the whole conversation so far: Claude has no
 #    memory, so we send all of it every time.
-def ask(messages):
+#    on_tool and on_text are optional "callbacks": functions ask() calls the
+#    moment a tool runs or new words arrive, so the terminal or web page can
+#    show progress live. ask() doesn't care what they do with it.
+def ask(messages, on_tool=None, on_text=None):
     # Create the connection here rather than at the top of the file, so a key
     # added after the app started (e.g. in Streamlit's Secrets) is picked up.
     client = anthropic.Anthropic()
+    full_text = ""  # every word Claude writes this turn, to return at the end
     while True:
-        response = client.messages.create(
+        # stream() hands over the reply word by word instead of all at once.
+        with client.messages.stream(
             model=MODEL,
             max_tokens=16000,
             system=SYSTEM_PROMPT,
             tools=TOOLS,
             messages=messages,
-        )
+        ) as stream:
+            for text in stream.text_stream:
+                full_text += text
+                if on_text:
+                    on_text(text)
+            # Once it's finished, get the complete reply, same as before.
+            response = stream.get_final_message()
+
         # Save Claude's turn (including any tool requests) into the history.
         messages.append({"role": "assistant", "content": response.content})
 
         # Claude didn't ask for a tool, so this is the final answer.
         if response.stop_reason != "tool_use":
-            return "".join(b.text for b in response.content if b.type == "text")
+            return full_text
 
         # Claude asked for one or more tools: run each one.
         tool_results = []
         for block in response.content:
             if block.type == "tool_use":
-                print(f"  [tool] {block.name}({block.input})")
+                if on_tool:
+                    on_tool(describe_tool_call(block.name, block.input))
                 result = run_tool(block.name, block.input)
                 tool_results.append({
                     "type": "tool_result",
@@ -232,7 +261,15 @@ if __name__ == "__main__":
         before = len(messages)
         messages.append({"role": "user", "content": question})
         try:
-            print(f"\nClaude: {ask(messages)}\n")
+            print()
+            ask(
+                messages,
+                # Callbacks for the terminal: print each lookup, and each new
+                # piece of text straight away (end="" = no new line, flush = show now).
+                on_tool=lambda label: print(f"  🔎 {label}"),
+                on_text=lambda text: print(text, end="", flush=True),
+            )
+            print("\n")
         except anthropic.APIError as e:
             # Claude itself couldn't be reached (no credit, outage, etc.).
             # Undo this half-finished turn so the conversation stays valid.

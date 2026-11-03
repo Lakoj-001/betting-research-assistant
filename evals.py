@@ -193,7 +193,7 @@ if __name__ == "__main__":
     for i, case in enumerate(cases, 1):
         print(f"\n[{i}/{len(cases)}] {case['question']}")
         messages = [{"role": "user", "content": case["question"]}]  # fresh chat each time
-        answer = ask(messages)
+        answer = ask(messages, on_tool=lambda label: print(f"  [tool] {label}"))
         called = tools_called(messages)
         problems = grade(case, answer, called)
 
