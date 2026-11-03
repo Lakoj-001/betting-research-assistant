@@ -8,7 +8,14 @@ import anthropic
 import requests
 from dotenv import load_dotenv
 
-from tools import find_value_bets, get_head_to_head, get_home_away_record, get_odds, get_recent_games
+from tools import (
+    find_value_bets,
+    get_head_to_head,
+    get_home_away_record,
+    get_odds,
+    get_recent_games,
+    get_schedule,
+)
 
 load_dotenv()
 MODEL = "claude-haiku-5-5"  # cheapest model while testing
@@ -44,6 +51,29 @@ Data rules:
 # 1. Describe the tool to Claude. Claude only ever sees this description,
 #    never the Python code itself.
 TOOLS = [
+    {
+        "name": "get_schedule",
+        "description": (
+            "Get the NBA schedule: every game from today (Melbourne date) up to days_ahead days "
+            "later, with its Melbourne start time and status: Upcoming, Live (quarter, clock "
+            "and score) or Final (score). Lists all games whether or not bookmakers have posted "
+            "odds. Use it for 'what games are on', 'when do X play next' and live scores."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "days_ahead": {
+                    "type": "integer",
+                    "description": "0 = today only (default). E.g. 3 = today plus the next 3 days. Max 7.",
+                },
+                "team": {
+                    "type": "string",
+                    "description": "Optional. Only this team's games, e.g. 'Celtics'.",
+                },
+            },
+            "required": [],
+        },
+    },
     {
         "name": "get_recent_games",
         "description": (
@@ -160,6 +190,8 @@ TOOLS = [
 # 2. When Claude asks for a tool, this runs the matching Python function.
 def run_tool(name, tool_input):
     try:
+        if name == "get_schedule":
+            return get_schedule(tool_input.get("days_ahead", 0), tool_input.get("team"))
         if name == "get_recent_games":
             return get_recent_games(tool_input["team"], tool_input.get("n", 5))
         if name == "get_home_away_record":
@@ -183,6 +215,10 @@ def run_tool(name, tool_input):
 def describe_tool_call(name, tool_input):
     """A short, readable label for a tool call, e.g. 'Recent games: Celtics'."""
     team = tool_input.get("team")
+    if name == "get_schedule":
+        days = tool_input.get("days_ahead", 0)
+        when = "today" if not days else f"next {days} days"
+        return f"Schedule: {team}, {when}" if team else f"Schedule: {when}"
     if name == "get_recent_games":
         return f"Recent games: {team}"
     if name == "get_home_away_record":

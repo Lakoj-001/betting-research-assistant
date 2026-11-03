@@ -293,6 +293,83 @@ def fetch_next_game(team_id):
     }
 
 
+SCHEDULE_MAX_AGE_SECONDS = 120  # live scores change fast, so only reuse for 2 minutes
+
+
+def get_schedule(days_ahead=0, team=None):
+    """NBA games from today up to `days_ahead` days later (Melbourne dates), with
+    each game's status: upcoming, live (with the score) or final. Every game is
+    listed, whether or not bookmakers have posted odds."""
+    days_ahead = max(0, min(int(days_ahead), 7))
+    found_team = None
+    if team:
+        found_team = find_team(team)
+        if found_team is None:
+            return {"error": f"No NBA team found matching '{team}'."}
+
+    today = datetime.now(LOCAL_TZ).date()
+    last_day = date.fromordinal(today.toordinal() + days_ahead)
+
+    # Saved for 2 minutes, one file per question (dates + team).
+    team_key = found_team["id"] if found_team else "all"
+    cache_file = f"cache/schedule_{today}_{days_ahead}_{team_key}.json"
+    games = None
+    if os.path.exists(cache_file):
+        with open(cache_file) as f:
+            saved = json.load(f)
+        if time.time() - saved["fetched_at"] < SCHEDULE_MAX_AGE_SECONDS:
+            games = saved["games"]
+    if games is None:
+        # US dates run a day behind Melbourne, so ask from the day before.
+        params = {
+            "start_date": date.fromordinal(today.toordinal() - 1).isoformat(),
+            "end_date": last_day.isoformat(),
+            "per_page": 100,
+        }
+        if found_team:
+            params["team_ids[]"] = found_team["id"]
+        games = api_get("/games", params)["data"]
+        os.makedirs("cache", exist_ok=True)
+        with open(cache_file, "w") as f:
+            json.dump({"fetched_at": time.time(), "games": games}, f)
+
+    listed = []
+    for g in sorted(games, key=lambda g: g.get("datetime") or g["date"]):
+        if not g.get("datetime"):
+            continue  # start time not set yet
+        start = datetime.fromisoformat(g["datetime"].replace("Z", "+00:00")).astimezone(LOCAL_TZ)
+        if not today <= start.date() <= last_day:
+            continue  # falls on a different Melbourne day
+
+        home, away = g["home_team"]["full_name"], g["visitor_team"]["full_name"]
+        score = f"{away} {g['visitor_team_score']} - {home} {g['home_team_score']}"
+        if g["status"] == "Final":
+            state = f"Final: {score}"
+        elif g["period"] and g["period"] > 0:
+            # Live: balldontlie gives the quarter (e.g. "3rd Qtr") and clock.
+            state = f"Live ({g['status']} {g.get('time') or ''}".strip() + f"): {score}"
+        else:
+            state = "Upcoming"
+
+        listed.append({
+            "starts_melbourne_time": start.strftime("%a %d %b %I:%M %p"),
+            "game": f"{away} at {home}",
+            "status": state,
+        })
+
+    dates = f"{today:%a %d %b}" if days_ahead == 0 else f"{today:%a %d %b} to {last_day:%a %d %b}"
+    if not listed:
+        who = f"{found_team['full_name']} " if found_team else ""
+        return {"source": "balldontlie", "dates_melbourne": dates,
+                "message": f"No {who}games scheduled for {dates} (Melbourne time)."}
+    return {
+        "source": "balldontlie",
+        "dates_melbourne": dates,
+        "checked_melbourne_time": datetime.now(LOCAL_TZ).strftime("%a %d %b %I:%M %p"),
+        "games": listed,
+    }
+
+
 def fetch_odds():
     """Return upcoming NBA head-to-head odds from Australian bookmakers.
     Saved to a file and reused for an hour to save credits."""

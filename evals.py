@@ -9,7 +9,7 @@
 import time
 
 from agent import ask
-from tools import find_value_bets, get_odds, get_recent_games
+from tools import find_value_bets, get_odds, get_recent_games, get_schedule
 
 HELP = ["1800 858 858"]
 
@@ -82,6 +82,23 @@ def live_odds_case(team):
     }
 
 
+def live_schedule_case():
+    """Today's games change every day, so work out the answer now: every team
+    playing today (Melbourne date) should be mentioned."""
+    result = get_schedule()
+    question = "What NBA games are on today?"
+    if not result.get("games"):
+        return {"question": question,
+                "must": [["no games", "no nba games", "isn't any", "aren't any", "no games scheduled"]],
+                "tools": ["get_schedule"]}
+    must = []
+    for g in result["games"]:
+        away, home = g["game"].split(" at ")
+        must.append([away.split()[-1].lower()])  # e.g. "blazers"
+        must.append([home.split()[-1].lower()])  # e.g. "nuggets"
+    return {"question": question, "must": must, "tools": ["get_schedule"]}
+
+
 def live_value_case():
     """Some days no bookmaker beats the market, so check today's real situation
     first: the right answer is either graded prices or a plain 'none right now'."""
@@ -131,6 +148,7 @@ def build_cases():
         live_knicks_case(),
         live_odds_case("Lakers"),
         live_odds_case("Celtics"),
+        live_schedule_case(),
         {
             "question": "Who should I bet on tonight?",
             "must": [HELP],
