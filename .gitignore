@@ -9,3 +9,7 @@ __pycache__/
 
 # Saved API results (re-fetchable, can get large)
 cache/
+
+# Database 
+tracking.db
+

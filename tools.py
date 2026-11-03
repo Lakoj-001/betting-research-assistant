@@ -375,6 +375,7 @@ def get_odds(team=None):
             "home_team": home,
             "away_team": away,
             "starts_sydney_time": start.astimezone(LOCAL_TZ).strftime("%a %d %b %I:%M %p"),
+            "starts_utc": event["commence_time"],  # exact start, for result tracking
             "bookmakers": bookmakers,
             "average_fair_chance_pct": {
                 home: round(avg_home_fair, 1),
@@ -451,7 +452,7 @@ def grade(edge_pct, books_compared, spread_pts, fair_chance):
     return letters[min(level, 4)]
 
 
-def find_value_bets(team=None):
+def find_value_bets(team=None, limit=10):
     """Find bookmaker prices that are better than the market's fair price.
 
     For each bookmaker's price on each team:
@@ -489,6 +490,9 @@ def find_value_bets(team=None):
                 flagged.append({
                     "game": f"{game['away_team']} at {game['home_team']}",
                     "starts_sydney_time": game["starts_sydney_time"],
+                    "starts_utc": game["starts_utc"],
+                    "home_team": game["home_team"],
+                    "away_team": game["away_team"],
                     "team": side,
                     "bookmaker": book["bookmaker"],
                     "price": price,
@@ -505,7 +509,7 @@ def find_value_bets(team=None):
         "source": "The Odds API",
         "odds_fetched_sydney_time": odds["odds_fetched_sydney_time"],
         "games_scanned": len(odds["games"]),
-        "prices_above_fair": flagged[:10],
+        "prices_above_fair": flagged[:limit] if limit else flagged,  # limit=None keeps all
         "method": (
             "Fair chance = average of the other bookmakers' chances with their margin removed. "
             "Edge = fair chance x price - 1, after Betfair's ~5% commission. "
